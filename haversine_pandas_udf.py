@@ -14,7 +14,7 @@ def haversine_udf(
     src_lat: pd.Series,
     src_lon: pd.Series,
     tgt_lat: pd.Series,
-    tgt_lon: pd.Series,€
+    tgt_lon: pd.Series,
 ) -> pd.Series:
     # Convert degrees to radians
     src_coords = np.radians(np.vstack([src_lat, src_lon]).T)
