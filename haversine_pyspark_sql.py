@@ -3,6 +3,16 @@ import math
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
+def get_full_cross_join(cross_join_df: DataFrame) -> DataFrame:
+    target_df = cross_join_df.withColumns({
+        "SourceId": F.col("TargetId"),
+        "TargetId": F.col("SourceId"),
+    })
+
+    result_df = cross_join_df.unionByName(target_df)
+
+    return result_df
+
 
 def calculate_deltas(df: DataFrame) -> DataFrame:
     return df.withColumn(
@@ -33,7 +43,7 @@ def calculate_haversine_distance(
 
 
 def normalize_haversine_distance(df: DataFrame) -> DataFrame:
-    window_spec = Window.partitionBy()
+    window_spec = Window.partitionBy("SourceId")
     return df.withColumn(
         "sim_haversine",
         F.when(
@@ -52,12 +62,14 @@ def normalize_haversine_distance(df: DataFrame) -> DataFrame:
 def calculate_haversine_similarity(df: DataFrame) -> DataFrame:
     deltas_df = calculate_deltas(df)
     haversine_df = calculate_haversine_formula(deltas_df)
-    distance_df = calculate_haversine_distance(haversine_df)
-    normalized_df = normalize_haversine_distance(distance_df)
-
-    return normalized_df.select(
+    distance_df = calculate_haversine_distance(haversine_df).select(
         F.col("source.id").alias("SourceId"),
         F.col("target.id").alias("TargetId"),
         "haversine_distance",
-        "sim_haversine",
     )
+
+    full_cross_join_df = get_full_cross_join(distance_df)
+
+    normalized_df = normalize_haversine_distance(full_cross_join_df)
+
+    return normalized_df
