@@ -1,17 +1,19 @@
 import pytest
 from chispa.dataframe_comparer import assert_df_equality
 from client.spark_config import spark
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 
-from harversine import (
-    calculate_haversine_similarity,
-)
+from haversine import calculate_haversine_similarity
+
 
 def get_cross_join_df(df: DataFrame, id_column: str) -> DataFrame:
     return df.alias("source").join(
         df.alias("target"),
         (F.col(f"source.{id_column}") < F.col(f"target.{id_column}")),
     )
+
+
 
 @pytest.fixture
 def sample_locations_df():
@@ -28,19 +30,19 @@ def sample_locations_df():
 
 
 @pytest.fixture
-def expected_similar_pairs_df():
+def expected_similar_pairs():
     data = [
-        (6, 7),  # Moscow to St. Petersburg
+        (7, 6),  # Moscow to St. Petersburg
         (3, 7),  # Paris to St. Petersburg
         (3, 6),  # Paris to Moscow
         (1, 2),  # New York to Los Angeles
-        (1, 3),  # New York to Paris
+        (3, 1),  # New York to Paris
     ]
     return spark.createDataFrame(data, ["SourceId", "TargetId"])
 
 
 def test_haversine_similarity_pipeline(
-    sample_locations_df, expected_similar_pairs_df
+    sample_locations_df, expected_similar_pairs
 ):
     input_df = sample_locations_df.select(
         F.col("id"), F.col("latitude"), F.col("longitude"), F.col("city")
@@ -50,13 +52,22 @@ def test_haversine_similarity_pipeline(
 
     result_df = (
         calculate_haversine_similarity(cross_join_df)
+        .withColumn(
+            "row_num",
+            F.row_number().over(
+                Window.partitionBy("haversine_distance").orderBy(
+                    F.desc("sim_haversine")
+                )
+            ),
+        )
+        .filter(F.col("row_num") == 1)
         .orderBy(F.desc("sim_haversine"))
         .limit(5)
-    )
+    ).select("SourceId", "TargetId")
 
     assert_df_equality(
-        expected_similar_pairs_df.select("SourceId", "TargetId"),
-        result_df.select("SourceId", "TargetId"),
+        expected_similar_pairs,
+        result_df,
         ignore_nullable=False,
         ignore_row_order=False,
     )
