@@ -6,7 +6,15 @@ from pyspark.sql.functions import pandas_udf
 from pyspark.sql.types import DoubleType
 from sklearn.metrics.pairwise import haversine_distances
 
-from feature_store.transformations.utils import get_full_cross_join
+def get_full_cross_join(cross_join_df: DataFrame) -> DataFrame:
+    target_df = cross_join_df.withColumns({
+        "SourceId": F.col("TargetId"),
+        "TargetId": F.col("SourceId"),
+    })
+
+    result_df = cross_join_df.unionByName(target_df)
+
+    return result_df
 
 
 @pandas_udf(DoubleType())
